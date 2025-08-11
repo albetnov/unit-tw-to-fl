@@ -8,15 +8,7 @@ This project is built with **Vite**, **Tailwind CSS**, and vanilla **JavaScript*
 
 ## 🤔 Motivation
 
-As developers increasingly work across both web and mobile platforms, the need for a consistent design language is crucial. Tailwind CSS has become a standard for rapid UI development on the web, but its utility-first approach doesn't have a direct equivalent in Flutter.
-
-This project was born out of the repetitive and time-consuming task of manually translating Tailwind's spacing, sizing, and layout values into Flutter's `double`s, `BoxConstraints`, and `BorderRadius` objects. The goal is to:
-
--   **Accelerate Development**: Eliminate the need to constantly reference Tailwind's documentation and perform manual calculations.
--   **Reduce Errors**: Prevent typos and miscalculations that can occur during manual conversion.
--   **Bridge the Gap**: Create a seamless workflow for developers and teams who use Tailwind for web mockups or products and Flutter for their mobile applications.
-
-By automating this conversion, we hope to make the developer experience smoother and more efficient.
+Let me keep the motivation nice, simple, and honest. I need it.
 
 ## ✨ Features
 
