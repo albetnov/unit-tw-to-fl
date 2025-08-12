@@ -43,6 +43,58 @@ function parseSingleClass(className) {
   const prefix = parts[0];
   const value = parts.slice(1).join('-');
 
+  // 0. Handle Borders (e.g., border, border-2, border-x, border-l-4, border-0, border-[3px])
+  if (prefix === 'border') {
+    // Determine sides, default all
+    let sides = ['top', 'right', 'bottom', 'left'];
+    let widthStr = null;
+
+    if (parts.length === 1) {
+      // 'border'
+      widthStr = '1';
+    } else if (parts.length >= 2) {
+      const sideOrWidth = parts[1];
+      const sideMap = {
+        t: ['top'],
+        r: ['right'],
+        b: ['bottom'],
+        l: ['left'],
+        x: ['left', 'right'],
+        y: ['top', 'bottom'],
+      };
+
+      if (sideMap[sideOrWidth]) {
+        sides = sideMap[sideOrWidth];
+        widthStr = parts[2] ?? '1';
+      } else {
+        // No side specified, treat second part as width for all sides
+        sides = ['top', 'right', 'bottom', 'left'];
+        widthStr = sideOrWidth;
+      }
+    }
+
+    // Normalize width (Tailwind border widths are in px; default is 1)
+    let width = 1;
+    if (widthStr) {
+      const arbitrary = widthStr.match(/^\[(.+)\]$/); // [3px]
+      if (arbitrary) {
+        const raw = arbitrary[1];
+        const pxMatch = raw.match(/([0-9]*\.?[0-9]+)px/);
+        if (pxMatch) {
+          width = parseFloat(pxMatch[1]);
+        } else if (!isNaN(parseFloat(raw))) {
+          width = parseFloat(raw);
+        }
+      } else if (!isNaN(parseFloat(widthStr))) {
+        width = parseFloat(widthStr);
+      } else if (widthStr === '0') {
+        width = 0;
+      }
+    }
+
+    return { type: 'border', sides, width };
+  }
+
   // 1. Handle Constraints (max-w, min-h, etc.)
   if ((prefix === 'max' || prefix === 'min') && parts.length > 1) {
     const constraintType = parts[1] === 'w' ? 'Width' : 'Height';
@@ -103,10 +155,13 @@ input.addEventListener('input', (e) => {
 
   const constraints = {};
   const otherValues = [];
+  const borderTokens = [];
 
   parsedObjects.forEach(obj => {
     if (obj.type === 'constraint') {
       constraints[obj.key] = obj.value;
+    } else if (obj.type === 'border') {
+      borderTokens.push(obj);
     } else {
       otherValues.push(formatValue(obj.value));
     }
@@ -116,6 +171,31 @@ input.addEventListener('input', (e) => {
   if (Object.keys(constraints).length > 0) {
     const constraintPairs = Object.entries(constraints).map(([key, value]) => `${key}: ${formatValue(value)}`);
     finalResults.push(`BoxConstraints(${constraintPairs.join(', ')})`);
+  }
+
+  // Compose a single Flutter Border expression from all border tokens
+  if (borderTokens.length > 0) {
+    const sides = { top: undefined, right: undefined, bottom: undefined, left: undefined };
+    // Later tokens override earlier ones
+    borderTokens.forEach(tok => {
+      tok.sides.forEach(side => {
+        sides[side] = tok.width;
+      });
+    });
+
+    const allDefined = ['top', 'right', 'bottom', 'left'].every(k => typeof sides[k] === 'number');
+    if (allDefined && sides.top === sides.right && sides.right === sides.bottom && sides.bottom === sides.left) {
+      finalResults.push(`Border.all(width: ${sides.top.toFixed(1)})`);
+    } else {
+      const borderParts = [];
+      if (typeof sides.top === 'number') borderParts.push(`top: BorderSide(width: ${sides.top.toFixed(1)})`);
+      if (typeof sides.right === 'number') borderParts.push(`right: BorderSide(width: ${sides.right.toFixed(1)})`);
+      if (typeof sides.bottom === 'number') borderParts.push(`bottom: BorderSide(width: ${sides.bottom.toFixed(1)})`);
+      if (typeof sides.left === 'number') borderParts.push(`left: BorderSide(width: ${sides.left.toFixed(1)})`);
+      if (borderParts.length > 0) {
+        finalResults.push(`Border(${borderParts.join(', ')})`);
+      }
+    }
   }
   finalResults.push(...otherValues);
 
@@ -141,18 +221,38 @@ input.addEventListener('input', (e) => {
   output.textContent = resultString;
 });
 
-copyButton.addEventListener('click', () => {
+copyButton.addEventListener('click', async () => {
   const textToCopy = output.textContent;
-  const tempTextArea = document.createElement('textarea');
-  tempTextArea.value = textToCopy;
-  document.body.appendChild(tempTextArea);
-  tempTextArea.select();
-  try {
-    document.execCommand('copy');
+  const showCopied = () => {
     copyFeedback.classList.remove('opacity-0');
     setTimeout(() => { copyFeedback.classList.add('opacity-0'); }, 1500);
+  };
+
+  if (navigator.clipboard && window.isSecureContext) {
+    try {
+      await navigator.clipboard.writeText(textToCopy);
+      showCopied();
+      return;
+    } catch (err) {
+      console.error('Clipboard API failed; falling back.', err);
+    }
+  }
+
+  // Fallback for non-secure contexts
+  const tempTextArea = document.createElement('textarea');
+  tempTextArea.value = textToCopy;
+  tempTextArea.style.position = 'fixed';
+  tempTextArea.style.top = '0';
+  tempTextArea.style.left = '0';
+  tempTextArea.style.opacity = '0';
+  document.body.appendChild(tempTextArea);
+  tempTextArea.focus();
+  tempTextArea.select();
+  try {
+    const ok = document.execCommand('copy');
+    if (ok) showCopied();
   } catch (err) {
-    console.error('Failed to copy text: ', err);
+    console.error('Fallback copy failed:', err);
   }
   document.body.removeChild(tempTextArea);
 });
